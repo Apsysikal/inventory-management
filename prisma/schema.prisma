@@ -1,0 +1,56 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Item {
+  id          String   @id @default(uuid())
+  serial      String
+  description String
+  count       Int      @default(0)
+  listId      String
+  list        ItemList @relation(fields: [listId], references: [id])
+
+  @@unique([serial, listId])
+}
+
+model ItemList {
+  id                String              @id @default(uuid())
+  description       String
+  ownerId           String
+  owner             User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  MembersOfItemList MembersOfItemList[]
+  Items             Item[]
+}
+
+model MembersOfItemList {
+  itemListId String
+  itemList   ItemList @relation(fields: [itemListId], references: [id])
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@id([itemListId, userId])
+}
+
+model User {
+  id                String              @id @default(uuid())
+  username          String              @unique
+  password          Password?
+  ItemList          ItemList[]
+  MembersOfItemList MembersOfItemList[]
+}
+
+model Password {
+  id     String @id @default(uuid())
+  hash   String
+  salt   String
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
