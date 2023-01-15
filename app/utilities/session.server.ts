@@ -1,7 +1,7 @@
 import { createCookieSessionStorage, redirect } from "@remix-run/node";
 import { compare } from "bcryptjs";
 import invariant from "tiny-invariant";
-import { prisma } from "~/utilities/prisma.server";
+import { getUnsafeUserByUsername, getUserById } from "~/models/user.server";
 
 const sessionSecret = process.env.SESSION_SECRET;
 
@@ -15,7 +15,7 @@ const sessionStorage = createCookieSessionStorage({
     path: "/",
     sameSite: "lax",
     secrets: [sessionSecret],
-    secure: true,
+    secure: process.env.NODE_ENV === "production",
   },
 });
 
@@ -66,17 +66,11 @@ export async function requireUserId(
 
 export async function getUser(request: Request) {
   const userId = await getUserId(request);
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      username: true,
-      ItemList: true,
-      MembersOfItemList: true,
-    },
-  });
+  if (!userId) return undefined;
 
+  const user = await getUserById(userId);
   if (!user) return undefined;
+
   return user;
 }
 
@@ -96,40 +90,35 @@ export async function requireUser(
   redirectTo: string = new URL(request.url).pathname
 ) {
   const userId = await requireUserId(request, redirectTo);
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      username: true,
-      ItemList: true,
-      MembersOfItemList: true,
-    },
-  });
+  const user = await getUserById(userId);
 
   if (!user) {
-    const searchParams = new URLSearchParams([["redirectTo", redirectTo]]);
-    throw redirect(`/login?${searchParams}`);
+    // No user exists for the userId in the cookie
+    // Logout and destroy the cookie
+    throw await logout(request);
   }
 
   return user;
 }
 
 export async function login(username: string, password: string) {
-  const user = await prisma.user.findUnique({
-    where: { username },
-    select: {
-      id: true,
-      username: true,
-      password: true,
-    },
-  });
+  const unsafeUser = await getUnsafeUserByUsername(username);
 
-  if (!user) return undefined;
+  if (!unsafeUser) return undefined;
 
-  invariant(user.password, `No password set for "${user.username}"`);
-  const { hash, salt } = user.password;
-  const passwordMatches = await compare(password + salt, hash);
+  invariant(unsafeUser.password, `User '${username}' has no password`);
+  const { hash } = unsafeUser.password;
+  const passwordMatches = await compare(password, hash);
 
   if (!passwordMatches) return undefined;
-  return { id: user.id, username };
+
+  const { password: _, ...safeUser } = unsafeUser;
+  return safeUser;
+}
+
+export async function logout(request: Request) {
+  const session = await getUserSession(request);
+  return redirect("/", {
+    headers: { "Set-Cookie": await sessionStorage.destroySession(session) },
+  });
 }
