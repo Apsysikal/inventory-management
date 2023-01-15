@@ -6,7 +6,7 @@
 export default function ListIndexRoute() {
   return (
     <>
-      <h2>Index /list</h2>
+      <p>Select one of the lists.</p>
     </>
   );
 }

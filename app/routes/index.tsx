@@ -1,6 +1,4 @@
 import { Link, Outlet } from "@remix-run/react";
-import { useLoaderData } from "@remix-run/react";
-import type { LoaderArgs } from "@remix-run/node";
 
 export default function IndexRoute() {
   return (
